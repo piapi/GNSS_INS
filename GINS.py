@@ -207,7 +207,12 @@ def pva_back(xk, nav_cur):
 
 # IMU误差反馈
 def imu_back(xk, imu_paramters):
-    imu_paramters += xk[9:21]
+    I_3 = np.ones((3, 1))
+    imu_paramters[0:3] = imu_paramters[0:3] + np.multiply((I_3 + imu_paramters[6:9]), xk[9:12])
+    imu_paramters[3:6] = imu_paramters[3:6] + np.multiply((I_3 + imu_paramters[9:12]), xk[12:15])
+    imu_paramters[6:9] = np.multiply((I_3 + imu_paramters[6:9]), (I_3 + xk[15:18])) - I_3
+    imu_paramters[9:12] = np.multiply((I_3 + imu_paramters[9:12]), (I_3 + xk[18:21])) - I_3
+    # imu_paramters += xk[9:21]
     return imu_paramters
 
 
@@ -255,7 +260,7 @@ def gins(gnss_file, imu_file, start_time, init_nav):
     meas_cur = np.array([[0.0], [0], [0], [0], [0], [0], [0]])
     meas_prev = np.array([[0.0], [0], [0], [0], [0], [0], [0]])
     nav = init_nav.copy()
-    temp = [start_time,
+    temp = [2022, start_time,
             nav.r[0, 0] / D2R, nav.r[1, 0] / D2R, nav.r[2, 0],
             nav.v[0, 0], nav.v[1, 0], nav.v[2, 0],
             (ins.dcm2euler(nav.C_bn).T / D2R)[0, 0],
@@ -271,9 +276,13 @@ def gins(gnss_file, imu_file, start_time, init_nav):
     index = 0
     times = 640000
     imu_parameters = np.zeros((12, 1))
-    f = open("./data/GINS.txt", "a")  # 利用追加模式,参数从w替换为a即可
+    f = open("./data/GINS.nav", "a")  # 利用追加模式,参数从w替换为a即可
     f.truncate(0)  # 清空文件后操作
-    f.write("{}\n".format(temp))
+    f.write('{}\t{}\t{}'
+            '\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n'.format(temp[0], temp[1],
+                                                temp[2], temp[3], temp[4],
+                                                temp[5], temp[6], temp[7],
+                                                temp[8], temp[9], temp[10]))
     binfile = open(imu_file, 'rb')  # 打开二进制文件
     size = os.path.getsize(imu_file)  # 获得文件大小
     for i in range(size):
@@ -283,7 +292,7 @@ def gins(gnss_file, imu_file, start_time, init_nav):
         if (i + 1) % 7 == 0 and meas_cur[0, 0] <= start_time:
             meas_prev[:] = meas_cur[:]
         if (i + 1) % 7 == 0 and meas_cur[0, 0] > start_time:
-            if meas_cur[0, 0] < RTK[i_rtk, 0]:
+            if meas_cur[0, 0] < RTK[i_rtk, 0] or i_rtk >= RTK.shape[0]:
                 # 预测
                 meas_cur, nav1 = ins_mech(nav, par, meas_cur, meas_prev, imu_parameters)
                 xk, pk = predict(xk, pk, nav1, nav, meas_cur, meas_prev)
@@ -313,14 +322,18 @@ def gins(gnss_file, imu_file, start_time, init_nav):
                 i_rtk += 1
             meas_prev[:] = meas_cur[:]
             nav = nav1.copy()
-            temp = [meas_cur[0, 0],
+            temp = [2022, meas_cur[0, 0],
                     nav.r[0, 0] / D2R, nav.r[1, 0] / D2R, nav.r[2, 0],
                     nav.v[0, 0], nav.v[1, 0], nav.v[2, 0],
                     (ins.dcm2euler(nav.C_bn).T / D2R)[0, 0],
                     (ins.dcm2euler(nav.C_bn).T / D2R)[0, 1],
                     (ins.dcm2euler(nav.C_bn).T / D2R)[0, 2]
                     ]
-            f.write("{}\n".format(temp))
+            f.write('{}\t{}\t{}'
+                    '\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n'.format(temp[0], temp[1],
+                                                                temp[2], temp[3], temp[4],
+                                                                temp[5], temp[6], temp[7],
+                                                                temp[8], temp[9], temp[10]))
             if times / (index + 1) == 5:
                 print('20%')
             elif times / (index + 1) == 2:
@@ -331,4 +344,3 @@ def gins(gnss_file, imu_file, start_time, init_nav):
             if index == times:
                 break
     f.close()
-
